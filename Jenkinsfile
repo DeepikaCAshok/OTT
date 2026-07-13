@@ -8,7 +8,6 @@ pipeline {
     }
 
     environment {
-
         IMAGE_NAME = "ott-platform"
         DOCKERHUB_REPO = "deepikaashok/ott-platform"
         IMAGE_TAG = "${BUILD_NUMBER}"
@@ -35,7 +34,6 @@ pipeline {
             steps {
                 sh 'mvn test'
             }
-
             post {
                 always {
                     junit allowEmptyResults: true,
@@ -46,23 +44,16 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-
                 withSonarQubeEnv('sonarqube') {
-
                     withCredentials([
-                        string(
-                            credentialsId: 'sonar',
-                            variable: 'SONAR_TOKEN'
-                        )
+                        string(credentialsId: 'sonar', variable: 'SONAR_TOKEN')
                     ]) {
-
                         sh '''
                         mvn sonar:sonar \
                         -Dsonar.projectKey=ott-platform \
                         -Dsonar.projectName="OTT Platform" \
                         -Dsonar.token=$SONAR_TOKEN
                         '''
-
                     }
                 }
             }
@@ -84,26 +75,18 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-
                 sh """
-                docker build \
-                -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
 
-                docker tag \
-                ${IMAGE_NAME}:${IMAGE_TAG} \
-                ${DOCKERHUB_REPO}:${IMAGE_TAG}
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_REPO}:${IMAGE_TAG}
 
-                docker tag \
-                ${IMAGE_NAME}:${IMAGE_TAG} \
-                ${DOCKERHUB_REPO}:latest
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_REPO}:latest
                 """
             }
         }
 
         stage('Push Docker Image') {
-
             steps {
-
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'dockerhub-creds',
@@ -111,11 +94,8 @@ pipeline {
                         passwordVariable: 'DOCKER_PASS'
                     )
                 ]) {
-
                     sh '''
-                    echo "$DOCKER_PASS" | docker login \
-                    -u "$DOCKER_USER" \
-                    --password-stdin
+                    echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
 
                     docker push $DOCKERHUB_REPO:$IMAGE_TAG
                     docker push $DOCKERHUB_REPO:latest
@@ -126,8 +106,7 @@ pipeline {
             }
         }
 
-        stage('Deploy using Docker Compose') {
-
+        stage('Deploy') {
             steps {
 
                 withCredentials([
@@ -139,49 +118,40 @@ pipeline {
                 ]) {
 
                     sh '''
-                    export MYSQL_DATABASE=ott_db
-                    export MYSQL_USER=$MYSQL_USER
-                    export MYSQL_PASSWORD=$MYSQL_PASSWORD
-                    export MYSQL_ROOT_PASSWORD=$MYSQL_PASSWORD
+                    docker stop ott-platform || true
+                    docker rm ott-platform || true
 
-                    docker compose down --remove-orphans || true
+                    docker pull $DOCKERHUB_REPO:latest
 
-                    docker compose pull
-
-                    docker compose up -d --force-recreate
+                    docker run -d \
+                      --name ott-platform \
+                      --network bridge \
+                      -p 8082:8082 \
+                      -e SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/$MYSQL_DATABASE \
+                      -e SPRING_DATASOURCE_USERNAME=$MYSQL_USER \
+                      -e SPRING_DATASOURCE_PASSWORD=$MYSQL_PASSWORD \
+                      $DOCKERHUB_REPO:latest
                     '''
                 }
             }
         }
 
         stage('Health Check') {
-
             steps {
-
                 sh '''
-
-                echo "Waiting for OTT Platform..."
-
+                echo "Waiting for application..."
                 sleep 30
 
-                curl --fail http://localhost:8082/api/ping
-
                 curl --fail http://localhost:8082/actuator/health
-
                 '''
             }
         }
 
         stage('Docker Cleanup') {
-
             steps {
-
                 sh '''
-
                 docker image prune -f
-
                 docker system df
-
                 '''
             }
         }
@@ -190,29 +160,21 @@ pipeline {
     post {
 
         success {
-
             echo "===================================="
             echo "BUILD SUCCESSFUL"
             echo "===================================="
-
             sh 'docker ps'
-
         }
 
         failure {
-
             echo "===================================="
             echo "BUILD FAILED"
             echo "===================================="
-
             sh 'docker ps -a'
-
         }
 
         always {
-
             cleanWs()
-
         }
     }
 }
