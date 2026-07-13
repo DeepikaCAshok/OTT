@@ -125,7 +125,7 @@ pipeline {
 
                     docker run -d \
                       --name ott-platform \
-                      --network bridge \
+                      --network ott_default \
                       -p 8082:8082 \
                       -e SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/$MYSQL_DATABASE \
                       -e SPRING_DATASOURCE_USERNAME=$MYSQL_USER \
